@@ -7,7 +7,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 
-# --- Browser Setup ---
+# --- Headless Browser Configuration ---
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--no-sandbox")
@@ -16,41 +16,40 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 def run_scraper():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     tenders = []
-    download_folder = "bid_documents"
+    folder = "bid_documents"
     
-    # Create folder for PDFs
-    if not os.path.exists(download_folder):
-        os.makedirs(download_folder)
+    if not os.path.exists(folder):
+        os.makedirs(folder) # Create folder for PDFs
 
     try:
         url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page"
         driver.get(url)
-        time.sleep(7)
+        time.sleep(7) # Required for Rajasthan portal JS loading
         
         rows = driver.find_elements("tag name", "tr")
-        for i, row in enumerate(rows[1:6]): # Testing with first 5 tenders
+        for row in rows[1:6]: # Testing with top 5 tenders
             cols = row.find_elements("tag name", "td")
             if len(cols) > 4:
-                title = cols[4].text.replace("/", "-") # Clean filename
+                # Clean title for filename
+                title = cols[4].text.strip().replace("/", "-").replace(" ", "_")
                 link_element = cols[4].find_element("tag name", "a")
                 pdf_url = link_element.get_attribute("href")
                 
-                # Metadata for CSV
-                tenders.append({"Date": cols[1].text, "Title": title, "File": f"{title}.pdf"})
-                
-                # --- Download PDF ---
-                response = requests.get(pdf_url, stream=True)
-                if response.status_code == 200:
-                    with open(f"{download_folder}/{title}.pdf", "wb") as f:
-                        f.write(response.content)
-        
-        # Save CSV metadata
-        if tenders:
-            keys = tenders[0].keys()
-            with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=keys)
-                writer.writeheader()
-                writer.writerows(tenders)
+                # Download the PDF
+                try:
+                    res = requests.get(pdf_url, timeout=15)
+                    filename = f"{folder}/{title}.pdf"
+                    with open(filename, "wb") as f:
+                        f.write(res.content)
+                    tenders.append({"Date": cols[1].text, "Title": title, "File": filename})
+                except Exception as e:
+                    print(f"Failed to download {title}: {e}")
+
+        # Save metadata to CSV
+        with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=["Date", "Title", "File"])
+            writer.writeheader()
+            writer.writerows(tenders)
 
     finally:
         driver.quit()
