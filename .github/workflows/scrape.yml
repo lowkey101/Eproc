@@ -1,0 +1,32 @@
+name: Rajasthan Tender Scraper
+on:
+  schedule:
+    - cron: '0 */4 * * *' # Auto-run every 4 hours
+  workflow_dispatch:      # Allows manual trigger button
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # Required to push changes back to repo
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Dependencies
+        run: pip install selenium webdriver-manager
+
+      - name: Run Scraper
+        run: python scraper.py
+
+      - name: Commit and Push Data
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Auto-update: Latest Rajasthan Tenders"
+          file_pattern: 'tenders.csv' # Only updates the data file
