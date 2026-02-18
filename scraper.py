@@ -5,9 +5,10 @@ import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
-# --- Headless Browser Configuration ---
+# --- Configuration ---
 chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--no-sandbox")
@@ -15,41 +16,54 @@ chrome_options.add_argument("--disable-dev-shm-usage")
 
 def run_scraper():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    tenders = []
+    tenders_data = []
     folder = "bid_documents"
     
     if not os.path.exists(folder):
-        os.makedirs(folder) # Create folder for PDFs
+        os.makedirs(folder)
 
     try:
         url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page"
         driver.get(url)
-        time.sleep(7) # Required for Rajasthan portal JS loading
+        time.sleep(8) # Portal is slow; giving extra time for AJAX
         
-        rows = driver.find_elements("tag name", "tr")
-        for row in rows[1:6]: # Testing with top 5 tenders
-            cols = row.find_elements("tag name", "td")
+        # Locate the results table
+        rows = driver.find_elements(By.XPATH, "//table[@id='table']//tr")
+        print(f"Detected {len(rows)} rows.")
+
+        for row in rows[1:11]: # Scrape top 10 new tenders
+            cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) > 4:
-                # Clean title for filename
-                title = cols[4].text.strip().replace("/", "-").replace(" ", "_")
-                link_element = cols[4].find_element("tag name", "a")
+                # Clean naming convention: TenderID_Title
+                date_val = cols[1].text.strip()
+                title_text = cols[4].text.strip().replace("/", "-").replace(" ", "_")
+                link_element = cols[4].find_element(By.TAG_NAME, "a")
                 pdf_url = link_element.get_attribute("href")
                 
-                # Download the PDF
+                # Download PDF
+                filename = f"{title_text}.pdf"
+                filepath = os.path.join(folder, filename)
+                
                 try:
-                    res = requests.get(pdf_url, timeout=15)
-                    filename = f"{folder}/{title}.pdf"
-                    with open(filename, "wb") as f:
+                    res = requests.get(pdf_url, timeout=20)
+                    with open(filepath, "wb") as f:
                         f.write(res.content)
-                    tenders.append({"Date": cols[1].text, "Title": title, "File": filename})
+                    
+                    tenders_data.append({
+                        "Date": date_val,
+                        "Title": title_text,
+                        "Local_Path": filepath,
+                        "Source_URL": pdf_url
+                    })
+                    print(f"Downloaded: {filename}")
                 except Exception as e:
-                    print(f"Failed to download {title}: {e}")
+                    print(f"Failed download for {title_text}: {e}")
 
-        # Save metadata to CSV
+        # Save to CSV for tracking
         with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["Date", "Title", "File"])
+            writer = csv.DictWriter(f, fieldnames=["Date", "Title", "Local_Path", "Source_URL"])
             writer.writeheader()
-            writer.writerows(tenders)
+            writer.writerows(tenders_data)
 
     finally:
         driver.quit()
