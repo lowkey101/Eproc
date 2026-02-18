@@ -1,4 +1,4 @@
-name: Rajasthan Tender Downloader
+name: Rajasthan No-Captcha Scraper
 on:
   schedule:
     - cron: '0 */6 * * *'
@@ -33,16 +33,13 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add tenders.csv
-          git commit -m "Update: Tender List" || echo "No changes"
+          git commit -m "Auto-update: Tender List" || echo "No changes"
           git pull --rebase origin main
           git push origin main
 
-      - name: Archive Bid Documents
-        if: always() # Runs even if scraper has issues so we get debug logs
+      - name: Upload Bid Documents
         uses: actions/upload-artifact@v4
         with:
-          name: Rajasthan-Scraper-Output
-          path: |
-            bid_documents/
-            debug_error.png
-          retention-days: 3
+          name: Tenders-PDF-Package
+          path: bid_documents/
+          retention-days: 5
