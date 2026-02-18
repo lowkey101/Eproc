@@ -14,6 +14,8 @@ chrome_options = Options()
 chrome_options.add_argument("--headless=new")
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
+# Mask the scraper as a real browser to avoid blocks
+chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
 
 def run_scraper():
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
@@ -25,48 +27,55 @@ def run_scraper():
 
     try:
         url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndLatestActiveTenders&service=page"
+        print(f"Opening: {url}")
         driver.get(url)
 
-        # FIX: Wait up to 30 seconds for the actual data table to appear
+        # 1. WAIT: Specifically look for the tender table by ID
         try:
-            wait = WebDriverWait(driver, 30)
+            wait = WebDriverWait(driver, 40)
             wait.until(EC.presence_of_element_located((By.ID, "table")))
-            print("Table loaded successfully.")
+            print("Table loaded.")
         except:
-            print("Error: Table timed out. The portal might be down or slow.")
+            print("Timeout: Table didn't load. Taking screenshot for debug.")
+            driver.save_screenshot("debug_error.png")
             return
 
-        rows = driver.find_elements(By.XPATH, "//table[@id='table']//tr")
+        # 2. EXTRACT: Get all rows in the body
+        rows = driver.find_elements(By.XPATH, "//table[@id='table']/tbody/tr")
         print(f"Detected {len(rows)} rows.")
 
-        for row in rows[1:11]: # Scrape top 10 rows
+        for row in rows[:8]: # Just the first 8 for testing
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) > 4:
                 title_text = cols[4].text.strip().replace("/", "-").replace(" ", "_")
-                link_element = cols[4].find_element(By.TAG_NAME, "a")
-                pdf_url = link_element.get_attribute("href")
-                
-                filename = f"{title_text}.pdf"
-                filepath = os.path.join(folder, filename)
-                
+                # Find the actual download link
                 try:
-                    res = requests.get(pdf_url, timeout=20)
+                    link_element = cols[4].find_element(By.TAG_NAME, "a")
+                    pdf_url = link_element.get_attribute("href")
+                    
+                    filename = f"{title_text}.pdf"
+                    filepath = os.path.join(folder, filename)
+                    
+                    # 3. DOWNLOAD
+                    res = requests.get(pdf_url, timeout=30)
                     with open(filepath, "wb") as f:
                         f.write(res.content)
                     
                     tenders_data.append({
                         "Date": cols[1].text.strip(),
                         "Title": title_text,
-                        "Local_Path": filepath,
-                        "Source_URL": pdf_url
+                        "Local_Path": filepath
                     })
-                except Exception as e:
-                    print(f"Failed download for {title_text}: {e}")
+                    print(f"Success: {filename}")
+                except:
+                    print(f"Skipping row: No link found.")
 
-        with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["Date", "Title", "Local_Path", "Source_URL"])
-            writer.writeheader()
-            writer.writerows(tenders_data)
+        # 4. SAVE CSV metadata
+        if tenders_data:
+            with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=["Date", "Title", "Local_Path"])
+                writer.writeheader()
+                writer.writerows(tenders_data)
 
     finally:
         driver.quit()
