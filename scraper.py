@@ -1,71 +1,40 @@
 import os
-import csv
 import time
-import requests
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
-# --- Headless Chrome Setup ---
-chrome_options = Options()
-chrome_options.add_argument("--headless=new")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-
-def run_scraper():
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    tenders_data = []
-    folder = "bid_documents"
+def download_tender_files():
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
     
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-
     try:
-        # TARGET: The No-Captcha URL you found
-        url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndListTendersbyDate&service=page"
-        print(f"Scraping direct list: {url}")
-        driver.get(url)
-        time.sleep(10) # Wait for JS to render the table
+        # 1. Navigate to the specific Tender Detail page
+        # Replace with the URL from your screenshot
+        detail_url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndViewTender&service=direct"
+        driver.get(detail_url)
+        
+        print("\n[ACTION REQUIRED]:")
+        print("1. Go to the browser window opened by the bot.")
+        print("2. Solve the CAPTCHA manually.")
+        print("3. DO NOT click download yet.")
+        input("4. Press ENTER here in this terminal once the CAPTCHA is solved...")
 
-        # Find the table and all its rows
-        # On this page, the table usually has a specific class or ID
-        rows = driver.find_elements(By.XPATH, "//table[contains(@class, 'table')]//tr")
-        print(f"Detected {len(rows)} rows.")
+        # 2. Find and click the PDF download links
+        # These are usually in the 'Tenders Documents' or 'Work Item Documents' tables
+        pdf_links = driver.find_elements(By.XPATH, "//a[contains(@href, '.pdf')]")
+        
+        for i, link in enumerate(pdf_links):
+            link.click()
+            print(f"Triggered download for file {i+1}")
+            time.sleep(2) # Short wait for download to start
 
-        for row in rows[1:11]: # Process top 10 new tenders
-            cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) > 4:
-                # The 'Title and Ref No' is usually in the 4th or 5th column
-                title_info = cols[4].text.strip().replace("/", "-").replace(" ", "_")
-                link_element = cols[4].find_element(By.TAG_NAME, "a")
-                pdf_url = link_element.get_attribute("href")
-                
-                # Download PDF
-                filename = f"{folder}/{title_info[:50]}.pdf"
-                try:
-                    res = requests.get(pdf_url, timeout=20)
-                    with open(filename, "wb") as f:
-                        f.write(res.content)
-                    
-                    tenders_data.append({
-                        "Date": cols[1].text.strip(),
-                        "Title": title_info,
-                        "File_Path": filename
-                    })
-                    print(f"Downloaded: {title_info[:30]}")
-                except:
-                    print(f"Failed to download PDF for: {title_info[:30]}")
-
-        # Save results to tracking file
-        with open("tenders.csv", "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["Date", "Title", "File_Path"])
-            writer.writeheader()
-            writer.writerows(tenders_data)
+        print("Downloads complete. Check your default download folder.")
 
     finally:
+        # Keep browser open for a moment to ensure files finish
+        time.sleep(5)
         driver.quit()
 
 if __name__ == "__main__":
-    run_scraper()
+    download_tender_files()
