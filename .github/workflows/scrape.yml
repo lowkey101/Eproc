@@ -32,20 +32,17 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 1. Add and commit the new data first
           git add tenders.csv
-          git commit -m "Scraper: Update tender data" || echo "No changes to commit"
-          
-          # 2. Pull with rebase to handle remote changes
+          git commit -m "Update: Tender List" || echo "No changes"
           git pull --rebase origin main
-          
-          # 3. Push the final synchronized state
           git push origin main
 
       - name: Archive Bid Documents
+        if: always() # Runs even if scraper has issues so we get debug logs
         uses: actions/upload-artifact@v4
         with:
-          name: Rajasthan-Bid-Documents
-          path: bid_documents/
-          retention-days: 5
+          name: Rajasthan-Scraper-Output
+          path: |
+            bid_documents/
+            debug_error.png
+          retention-days: 3
