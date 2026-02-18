@@ -1,14 +1,14 @@
 name: Rajasthan Tender Downloader
 on:
   schedule:
-    - cron: '0 */6 * * *' # Runs 4 times a day to avoid rate limiting
-  workflow_dispatch:      # Manual trigger for testing
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
   build_and_scrape:
     runs-on: ubuntu-latest
     permissions:
-      contents: write     # Permission to push CSV updates
+      contents: write
     
     steps:
       - name: Checkout Repository
@@ -32,14 +32,20 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 1. Add and commit the new data first
           git add tenders.csv
+          git commit -m "Scraper: Update tender data" || echo "No changes to commit"
+          
+          # 2. Pull with rebase to handle remote changes
           git pull --rebase origin main
-          git commit -m "Update Tender Log: $(date)" || echo "No new tenders"
+          
+          # 3. Push the final synchronized state
           git push origin main
 
       - name: Archive Bid Documents
         uses: actions/upload-artifact@v4
         with:
-          name: Daily-Bid-Documents-$(date +'%Y-%m-%d')
+          name: Rajasthan-Bid-Documents
           path: bid_documents/
-          retention-days: 5 # Deletes after 5 days to keep your account clean
+          retention-days: 5
