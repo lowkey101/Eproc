@@ -1,77 +1,61 @@
 import os
-import csv
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 
-# --- Configuration ---
-chrome_options = Options()
-chrome_options.add_argument("--headless=new")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-dev-shm-usage")
-chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+# Configuration for organized storage
+BASE_PATH = "Tenders/JDA"
+os.makedirs(BASE_PATH, exist_ok=True)
 
-def run_deep_scraper():
-    # 1. HEARTBEAT: Create empty file so Git doesn't error out
-    with open("tender_details.csv", "a", encoding="utf-8"): os.utime("tender_details.csv", None)
-    
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    tenders_data = []
+def run_scraper():
+    with sync_playwright() as p:
+        # Using chromium with stealth to bypass bot detection
+        browser = p.chromium.launch(headless=True) 
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            accept_downloads=True
+        )
+        page = context.new_page()
+        stealth_sync(page)
 
-    try:
-        # 2. NAVIGATE: Use the no-CAPTCHA bypass URL
-        url = "https://eproc.rajasthan.gov.in/nicgep/app?page=FrontEndListTendersbyDate&service=page"
-        driver.get(url)
+        print("Navigating to JDA Tender List...")
+        # The specific organization link for JDA
+        jda_url = "https://eproc.rajasthan.gov.in/nicgep/app?component=%24DirectLink&page=FrontEndTendersByOrganisation&service=direct"
         
-        # Wait up to 45 seconds for the PWD table to render
-        wait = WebDriverWait(driver, 45)
-        wait.until(EC.presence_of_element_located((By.ID, "table")))
-        
-        # 3. COLLECT: Grab links from the first page
-        rows = driver.find_elements(By.XPATH, "//table[@id='table']//tr")[1:11]
-        detail_links = []
-        for row in rows:
-            try:
-                link = row.find_element(By.TAG_NAME, "a").get_attribute("href")
-                detail_links.append(link)
-            except: continue
+        try:
+            page.goto(jda_url, wait_until="networkidle")
+            # Wait for the table that lists tenders to appear
+            page.wait_for_selector("table.table-bordered", timeout=30000)
 
-        # 4. CRAWL: Visit each detail page for engineering data
-        for link in detail_links:
-            driver.get(link)
-            time.sleep(5) 
+            # Locate rows in the tender table
+            rows = page.query_selector_all("tr")
             
-            try:
-                # Targeted XPaths for Rajasthan PWD portal labels
-                row_data = {
-                    "Tender_ID": driver.find_element(By.XPATH, "//*[contains(text(), 'Tender ID')]/following-sibling::td").text.strip(),
-                    "Title": driver.find_element(By.XPATH, "//*[contains(text(), 'Title')]/following-sibling::td").text.strip(),
-                    "Value_INR": driver.find_element(By.XPATH, "//*[contains(text(), 'Tender Value')]/following-sibling::td").text.strip().replace(',', ''),
-                    "EMD_Amount": driver.find_element(By.XPATH, "//*[contains(text(), 'EMD Amount')]/following-sibling::td").text.strip().replace(',', ''),
-                    "Work_Period": driver.find_element(By.XPATH, "//*[contains(text(), 'Period Of Work')]/following-sibling::td").text.strip(),
-                    "Submission_End": driver.find_element(By.XPATH, "//*[contains(text(), 'Bid Submission End Date')]/following-sibling::td").text.strip(),
-                    "Source_URL": link
-                }
-                tenders_data.append(row_data)
-                print(f"Captured: {row_data['Tender_ID']}")
-            except:
-                print(f"Skipping page: Layout mismatch or blocked")
+            for index, row in enumerate(rows[1:]):  # Skip header row
+                cols = row.query_selector_all("td")
+                if len(cols) < 5: continue
 
-        # 5. SAVE: Write final results
-        if tenders_data:
-            keys = tenders_data[0].keys()
-            with open("tender_details.csv", "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=keys)
-                writer.writeheader()
-                writer.writerows(tenders_data)
+                # Pinpointing details from the table
+                tender_title = cols[3].inner_text().strip()
+                tender_id = cols[4].inner_text().strip().replace("/", "_")
+                closing_date = cols[5].inner_text().strip()
 
-    finally:
-        driver.quit()
+                # Create folder for this specific tender
+                folder_path = os.path.join(BASE_PATH, f"{tender_id}")
+                os.makedirs(folder_path, exist_ok=True)
+
+                # Save a metadata file for your website database later
+                with open(os.path.join(folder_path, "info.txt"), "w") as f:
+                    f.write(f"Title: {tender_title}\nID: {tender_id}\nClosing: {closing_date}")
+
+                print(f"Stored metadata for: {tender_id}")
+
+                # Optional: Add download logic here for BOQ/NIT 
+                # (Requires clicking into the tender detail page)
+
+        except Exception as e:
+            print(f"Error during scraping: {e}")
+        finally:
+            browser.close()
 
 if __name__ == "__main__":
-    run_deep_scraper()
+    run_scraper()
