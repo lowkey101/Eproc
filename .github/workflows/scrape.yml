@@ -2,9 +2,8 @@ name: Daily JDA Tender Scraper
 
 on:
   schedule:
-    # Runs at 04:00 AM and 04:00 PM UTC every day
     - cron: '0 4,16 * * *'
-  workflow_dispatch: # Allows you to run it manually from GitHub UI
+  workflow_dispatch:
 
 jobs:
   build:
@@ -32,5 +31,5 @@ jobs:
         git config --global user.name "TenderBot"
         git config --global user.email "bot@yourdomain.com"
         git add Tenders/
-        git commit -m "Automated update: Scraped JDA Tenders $(date)" || exit 0
+        git commit -m "Automated update: JDA Tenders $(date)" || exit 0
         git push
