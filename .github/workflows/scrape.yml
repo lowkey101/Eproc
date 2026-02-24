@@ -20,10 +20,10 @@ jobs:
 
     - name: Install Dependencies
       run: |
-        pip install playwright playwright-stealth pandas
+        pip install playwright playwright-stealth
         playwright install chromium
 
-    - name: Run Scraper
+    - name: Run JDA Scraper
       run: python scraper.py
 
     - name: Commit and Push Changes
